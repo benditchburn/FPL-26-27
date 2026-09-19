@@ -6,6 +6,7 @@ from src.lineup_consensus import build_consensus
 from src.start_probs import build_start_probs
 from src.decision_report import build_decision_note
 from src.evaluation import evaluate_projection_snapshot
+from src.fotmob_history import external_identity_score, match_external_priors
 
 
 def _players(n=14):
@@ -128,3 +129,50 @@ def test_projection_evaluation_metrics():
     assert metrics["Minutes MAE"] == 7.5
     assert 0.0 <= metrics["Start Brier"] <= 1.0
     assert 0.0 <= metrics["P60 Brier"] <= 1.0
+
+
+def test_external_match_rejects_same_surname_wrong_person():
+    score = external_identity_score(
+        "Suzuki",
+        "Zion Suzuki",
+        "Yuito Suzuki",
+    )
+
+    assert score["score"] == 0.0
+
+
+def test_external_match_accepts_same_identity_with_extra_names():
+    score = external_identity_score(
+        "Cunha",
+        "Matheus Cunha",
+        "Matheus Santos Carneiro Da Cunha",
+    )
+
+    assert score["score"] >= 0.92
+
+
+def test_external_prior_matching_drops_suzuki_false_positive():
+    fallback = pd.DataFrame(
+        [
+            {
+                "Player ID": 1,
+                "Code": 101,
+                "Player": "Suzuki",
+                "Full Name": "Zion Suzuki",
+            }
+        ]
+    )
+    external = pd.DataFrame(
+        [
+            {
+                "Player External": "Yuito Suzuki",
+                "External League": "Bundesliga",
+                "Hist Team External": "Freiburg",
+                "External xG Share": 0.08,
+                "External xA Share": 0.05,
+            }
+        ]
+    )
+
+    matched = match_external_priors(fallback, external)
+    assert matched.empty
