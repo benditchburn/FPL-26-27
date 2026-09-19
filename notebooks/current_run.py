@@ -558,7 +558,7 @@ transfer_result = recommend_transfer(
 )
 
 print("\nRECOMMENDATION:", transfer_result["recommendation"])
-print("\nROLL vs BEST 1FT")
+print("\nCurrent-GW decision comparison")
 display(transfer_result["comparison"])
 
 print("\nOptimal path")
