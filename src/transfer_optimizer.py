@@ -724,11 +724,11 @@ def recommend_transfer(
     terminal_ft_option_value: float | None = None,
     time_limit: float = 60.0,
 ):
-    """Compare the optimal current-GW decision with ROLL and 1FT counterfactuals.
+    """Compare the optimal plan with each feasible current-GW transfer count.
 
     The value of a free transfer is endogenous: rolling changes the FT state in
-    later GWs, and the optimiser is allowed to spend that extra flexibility when
-    it becomes useful. No fixed "a transfer is worth X points" assumption is
+    later GWs, and the optimiser can spend that extra flexibility when it
+    becomes useful. No fixed "a transfer is worth X points" assumption is
     imposed.
     """
 
@@ -754,17 +754,22 @@ def recommend_transfer(
     )
 
     optimal = _solve_transfer_plan(**common)
-    roll = _solve_transfer_plan(
-        **common,
-        first_gw_transfer_count=0,
+
+    max_first_gw = min(
+        max_transfers_per_gw,
+        free_transfers + (max_hits_per_gw if allow_hits else 0),
     )
 
-    one_transfer = None
-    if max_transfers_per_gw >= 1:
-        one_transfer = _solve_transfer_plan(
+    counterfactuals = {
+        transfer_count: _solve_transfer_plan(
             **common,
-            first_gw_transfer_count=1,
+            first_gw_transfer_count=transfer_count,
         )
+        for transfer_count in range(max_first_gw + 1)
+    }
+
+    roll = counterfactuals[0]
+    one_transfer = counterfactuals.get(1)
 
     first = optimal["plan"].iloc[0]
     if int(first["Transfers"]) == 0:
@@ -774,24 +779,24 @@ def recommend_transfer(
         ins = ", ".join(first["In"])
         recommendation = f"{outs} -> {ins}"
 
-    rows = [
-        {
-            "Scenario": "ROLL",
-            "Decision Utility": roll["objective"],
-            "Projected xPts Utility": roll["projected_points_utility"],
-            "First GW Transfers": 0,
-            "First GW Out": [],
-            "First GW In": [],
-        }
-    ]
+    rows = []
 
-    if one_transfer is not None:
-        p = one_transfer["plan"].iloc[0]
+    for transfer_count, result in counterfactuals.items():
+        p = result["plan"].iloc[0]
+
+        if transfer_count == 0:
+            scenario = "ROLL"
+        elif transfer_count == 1:
+            scenario = "BEST 1 TRANSFER"
+        else:
+            scenario = f"BEST {transfer_count} TRANSFERS"
+
         rows.append({
-            "Scenario": "BEST 1FT",
-            "Decision Utility": one_transfer["objective"],
-            "Projected xPts Utility": one_transfer["projected_points_utility"],
-            "First GW Transfers": 1,
+            "Scenario": scenario,
+            "Decision Utility": result["objective"],
+            "Projected xPts Utility": result["projected_points_utility"],
+            "First GW Transfers": transfer_count,
+            "First GW Hits": int(p["Hits"]),
             "First GW Out": p["Out"],
             "First GW In": p["In"],
         })
@@ -799,14 +804,15 @@ def recommend_transfer(
     comparison = pd.DataFrame(rows)
     roll_value = float(
         comparison.loc[
-            comparison["Scenario"] == "ROLL",
+            comparison["First GW Transfers"] == 0,
             "Decision Utility",
         ].iloc[0]
     )
     comparison["Net vs Roll"] = comparison["Decision Utility"] - roll_value
+
     raw_roll = float(
         comparison.loc[
-            comparison["Scenario"] == "ROLL",
+            comparison["First GW Transfers"] == 0,
             "Projected xPts Utility",
         ].iloc[0]
     )
@@ -819,6 +825,7 @@ def recommend_transfer(
         "optimal": optimal,
         "roll": roll,
         "one_transfer": one_transfer,
+        "counterfactuals": counterfactuals,
         "comparison": comparison.sort_values(
             "Decision Utility",
             ascending=False,
