@@ -4,8 +4,6 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 import pandas as pd
-import setuptools
-import LanusStats as ls
 
 
 def normalise(s):
@@ -153,6 +151,11 @@ def fetch_external_history(
 
     if cache_file.exists():
         return pd.read_csv(cache_file)
+
+    # LanusStats is only needed when refreshing the cache. Keep it lazy so
+    # diagnostics/tests that only use matching logic do not require it.
+    import setuptools  # noqa: F401  # LanusStats compatibility on some envs
+    import LanusStats as ls
 
     fotmob = ls.FotMob()
     frames = []
