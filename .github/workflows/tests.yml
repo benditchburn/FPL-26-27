@@ -21,4 +21,4 @@ jobs:
           pip install numpy pandas scipy requests pytest
 
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q
