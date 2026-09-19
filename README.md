@@ -22,6 +22,10 @@ It is a VS Code/Jupyter-style Python script using `# %%` cells. It now:
 - projects a configurable multi-GW horizon;
 - includes appearance, goals, assists, clean sheets, goals conceded, defensive
   contributions, goalkeeper saves **and bonus points** in `xPts Model`;
+- saves the current planning-GW projection to `data/predictions/` so it can be
+  evaluated honestly after the event rather than reconstructed with hindsight;
+- reports historical xPts/minutes errors plus start/P60 calibration once saved
+  gameweeks have completed;
 - compares rolling a transfer with the best one-transfer path and then solves
   the optimal multi-GW transfer plan.
 
@@ -64,6 +68,7 @@ Jupyter extension.
 - `src/xpts.py` — base FPL scoring
 - `src/season_update.py` — cumulative in-season prior updates
 - `src/transfer_optimizer.py` — multi-GW squad/transfer MILP
+- `src/evaluation.py` — pre-deadline projection snapshots and post-GW scoring
 
 The older numbered notebooks are retained as historical development runs.
 
