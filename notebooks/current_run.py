@@ -492,6 +492,31 @@ xpts_horizon["xPts Model"] = (
 print("xPts horizon:", xpts_horizon.shape)
 print("Gameweeks:", sorted(xpts_horizon["GW"].unique().tolist()))
 
+# Save the current planning-GW projection before the deadline so future runs can
+# evaluate what the model actually believed at the time, rather than backfilling
+# history with hindsight.
+from src.evaluation import (
+    save_projection_snapshot,
+    evaluate_saved_predictions,
+)
+
+prediction_dir = DATA / "predictions"
+snapshot_path = save_projection_snapshot(
+    xpts_horizon,
+    prediction_dir=prediction_dir,
+    start_gw=START_GW,
+)
+print("Saved projection snapshot:", snapshot_path.relative_to(ROOT))
+
+backtest = evaluate_saved_predictions(
+    prediction_dir,
+    SEASON_EVENTS,
+)
+
+if not backtest.empty:
+    print("\nHistorical projection evaluation")
+    display(backtest)
+
 display(
     xpts_horizon.loc[
         xpts_horizon["GW"] == START_GW,
