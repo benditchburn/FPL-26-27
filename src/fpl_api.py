@@ -6,11 +6,42 @@ FPL_BOOTSTRAP_URL = "https://fantasy.premierleague.com/api/bootstrap-static/"
 FPL_EVENT_LIVE_URL = "https://fantasy.premierleague.com/api/event/{gw}/live/"
 
 
-def fetch_current_players():
+def fetch_bootstrap() -> dict:
+    """Fetch the official FPL bootstrap payload."""
     response = requests.get(FPL_BOOTSTRAP_URL, timeout=30)
     response.raise_for_status()
+    return response.json()
 
-    data = response.json()
+
+def get_gameweek_state(bootstrap: dict | None = None) -> dict:
+    """Return current/next/last-finished GW state from the official FPL API.
+
+    This avoids hard-coding START_GW in weekly notebooks. Around deadlines the
+    API may have no event marked current, so planning_gw prefers is_next and
+    otherwise falls back to the current event.
+    """
+    data = fetch_bootstrap() if bootstrap is None else bootstrap
+    events = data.get("events", [])
+
+    current = next((e["id"] for e in events if e.get("is_current")), None)
+    next_gw = next((e["id"] for e in events if e.get("is_next")), None)
+    finished = [e["id"] for e in events if e.get("finished")]
+    last_finished = max(finished) if finished else 0
+
+    planning = next_gw if next_gw is not None else current
+    if planning is None and last_finished < 38:
+        planning = last_finished + 1
+
+    return {
+        "current_gw": current,
+        "next_gw": next_gw,
+        "last_finished_gw": last_finished,
+        "planning_gw": planning,
+    }
+
+
+def fetch_current_players():
+    data = fetch_bootstrap()
 
     teams = {
         team["id"]: team["name"]
