@@ -30,6 +30,11 @@ PLAYER_ALIASES = {
     "Ramsey (Jacob)": "Ramsey",
 }
 
+# A predicted-XI source is supposed to provide eleven starters per club. If
+# fewer than this many players can be matched, treat that club/source as
+# unavailable rather than silently interpreting parser failures as bench votes.
+MIN_MATCHED_STARTERS_PER_TEAM = 8
+
 def name_score(source_name, candidate):
     a = normalise(source_name)
     b = normalise(candidate)
@@ -136,15 +141,23 @@ def build_consensus(
         )
 
         if "Matched Team" in source_df.columns:
-            covered_teams = set(source_df["Matched Team"].dropna().astype(str))
+            source_team = source_df["Matched Team"].astype("string")
         elif "Team" in source_df.columns:
-            covered_teams = set(
-                source_df["Team"].map(
-                    lambda x: TEAM_ALIASES.get(x, x)
-                ).dropna().astype(str)
-            )
+            source_team = source_df["Team"].map(
+                lambda x: TEAM_ALIASES.get(x, x)
+            ).astype("string")
         else:
-            covered_teams = set(base["Team"].astype(str))
+            source_team = pd.Series(pd.NA, index=source_df.index, dtype="string")
+
+        quality = (
+            source_df.assign(_Team=source_team)
+            .loc[source_df["Player ID"].notna()]
+            .groupby("_Team")["Player ID"]
+            .nunique()
+        )
+        covered_teams = set(
+            quality[quality >= MIN_MATCHED_STARTERS_PER_TEAM].index.astype(str)
+        )
 
         covered = base["Team"].astype(str).isin(covered_teams)
         base.loc[covered, source_name] = (

@@ -520,6 +520,7 @@ display(
 # -----------------------------
 
 from src.transfer_optimizer import recommend_transfer
+from src.decision_report import build_current_action_report, build_decision_note
 
 missing_names = [
     name
@@ -540,6 +541,8 @@ if missing_names:
 print("BANK:", BANK)
 print("FREE_TRANSFERS:", FREE_TRANSFERS)
 print("SELL_PRICES supplied:", SELL_PRICES is not None)
+if SELL_PRICES is None:
+    print("WARNING: optimiser is using current market price as selling price for owned players.")
 
 transfer_result = recommend_transfer(
     xpts_horizon=xpts_horizon,
@@ -558,8 +561,39 @@ transfer_result = recommend_transfer(
 )
 
 print("\nRECOMMENDATION:", transfer_result["recommendation"])
+print("MODEL EDGE:", build_decision_note(transfer_result))
+
 print("\nCurrent-GW decision comparison")
-display(transfer_result["comparison"])
+display(
+    transfer_result["comparison"][
+        [
+            "Scenario",
+            "Decision Utility",
+            "Projected xPts Utility",
+            "First GW Transfers",
+            "First GW Hits",
+            "First GW Out",
+            "First GW In",
+            "Net vs Roll",
+            "Raw xPts vs Roll",
+            "Marginal Decision vs Fewer Transfers",
+            "Marginal Raw xPts vs Fewer Transfers",
+        ]
+    ]
+)
+
+action_report = build_current_action_report(
+    transfer_result,
+    xpts_horizon,
+    current_players,
+    start_gw=START_GW,
+    max_gw=MAX_GW,
+    gw_decay=0.90,
+)
+
+if not action_report.empty:
+    print("\nWhy the optimiser likes the current-GW move")
+    display(action_report)
 
 print("\nOptimal path")
 display(
@@ -578,4 +612,16 @@ display(
             "Hit Cost",
         ]
     ]
+)
+
+print("\nFixture-model diagnostics")
+print(
+    "Market calibration RMSE:",
+    round(float(fixture_fit["rmse"]), 3),
+    "| MAE:",
+    round(float(fixture_fit["mae"]), 3),
+)
+print(
+    "Projected fixture xG sources:",
+    fixture_horizon["xG Source"].value_counts().to_dict(),
 )

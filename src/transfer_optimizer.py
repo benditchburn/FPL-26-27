@@ -672,6 +672,8 @@ def _solve_transfer_plan(
             "Hits": hit_count,
             "Out": outs["Player"].tolist(),
             "In": ins["Player"].tolist(),
+            "Out IDs": outs["Player ID"].astype(int).tolist(),
+            "In IDs": ins["Player ID"].astype(int).tolist(),
             "Bank After": float(x[bank_idx(g)]),
             "FT Next": next_ft,
             "XI xPts": gw_pts,
@@ -820,16 +822,61 @@ def recommend_transfer(
         comparison["Projected xPts Utility"] - raw_roll
     )
 
+    # Make the value of an *additional* transfer explicit. This is often more
+    # useful than merely knowing which scenario is mathematically best.
+    by_count = comparison.sort_values("First GW Transfers").copy()
+    by_count["Marginal Decision vs Fewer Transfers"] = (
+        by_count["Decision Utility"].diff().fillna(0.0)
+    )
+    by_count["Marginal Raw xPts vs Fewer Transfers"] = (
+        by_count["Projected xPts Utility"].diff().fillna(0.0)
+    )
+    comparison = comparison.merge(
+        by_count[
+            [
+                "First GW Transfers",
+                "Marginal Decision vs Fewer Transfers",
+                "Marginal Raw xPts vs Fewer Transfers",
+            ]
+        ],
+        on="First GW Transfers",
+        how="left",
+        validate="one_to_one",
+    )
+
+    ranked = comparison.sort_values(
+        "Decision Utility",
+        ascending=False,
+    ).reset_index(drop=True)
+
+    if len(ranked) >= 2:
+        decision_margin = float(
+            ranked.loc[0, "Decision Utility"]
+            - ranked.loc[1, "Decision Utility"]
+        )
+    else:
+        decision_margin = np.nan
+
+    if pd.isna(decision_margin):
+        decision_margin_label = "single scenario"
+    elif decision_margin < 0.25:
+        decision_margin_label = "near tie"
+    elif decision_margin < 0.75:
+        decision_margin_label = "small model edge"
+    elif decision_margin < 1.50:
+        decision_margin_label = "moderate model edge"
+    else:
+        decision_margin_label = "large model edge"
+
     return {
         "recommendation": recommendation,
         "optimal": optimal,
         "roll": roll,
         "one_transfer": one_transfer,
         "counterfactuals": counterfactuals,
-        "comparison": comparison.sort_values(
-            "Decision Utility",
-            ascending=False,
-        ).reset_index(drop=True),
+        "comparison": ranked,
+        "decision_margin_vs_runner_up": decision_margin,
+        "decision_margin_label": decision_margin_label,
         "assumptions": {
             "prices_static_over_horizon": True,
             "owned_sell_prices_default_to_current_price": sell_prices is None,
