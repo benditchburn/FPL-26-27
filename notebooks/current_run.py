@@ -363,6 +363,28 @@ external_priors = update_external_attack_priors_from_events(
 
 print("External-prior matches:", len(external_priors))
 
+if not external_priors.empty:
+    weakest_external = external_priors.sort_values(
+        ["External Match Score", "External Match Gap"],
+        ascending=[True, True],
+    ).head(10)
+
+    print("\nWeakest accepted external identity matches")
+    display(
+        weakest_external[
+            [
+                "Player",
+                "Full Name",
+                "External Player",
+                "External Team",
+                "External League",
+                "External Match Score",
+                "External Full Name Score",
+                "External Match Gap",
+            ]
+        ]
+    )
+
 
 # %%
 # -----------------------------
@@ -491,6 +513,24 @@ xpts_horizon["xPts Model"] = (
 
 print("xPts horizon:", xpts_horizon.shape)
 print("Gameweeks:", sorted(xpts_horizon["GW"].unique().tolist()))
+
+gk_attack_warning = xpts_horizon[
+    (xpts_horizon["FPL Pos"] == "GK")
+    & (
+        (pd.to_numeric(xpts_horizon["xG"], errors="coerce") > 0.01)
+        | (pd.to_numeric(xpts_horizon["xA"], errors="coerce") > 0.02)
+    )
+]
+
+if not gk_attack_warning.empty:
+    print("\nWARNING: unusually high goalkeeper attacking projection")
+    display(
+        gk_attack_warning[
+            ["GW", "Player", "Team", "xG", "xA", "Attack Prior Source"]
+        ]
+        .drop_duplicates()
+        .sort_values(["GW", "xG"], ascending=[True, False])
+    )
 
 # Save the current planning-GW projection before the deadline so future runs can
 # evaluate what the model actually believed at the time, rather than backfilling
