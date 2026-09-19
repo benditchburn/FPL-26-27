@@ -161,6 +161,7 @@ from src.current_season import (
     build_team_event_actuals,
 )
 from src.season_update import (
+    build_player_prior_exposure,
     update_attack_priors_from_events,
     update_external_attack_priors_from_events,
     update_team_strengths_from_events,
@@ -182,14 +183,23 @@ for gw, event in SEASON_EVENTS:
         gw=gw,
     )
 
+attack_prior_exposure = build_player_prior_exposure(
+    hist_minutes_base,
+    current_players,
+    min_exposure=2.5,
+    max_exposure=8.0,
+    saturation_90s=12.0,
+)
+
 attack_priors_updated = update_attack_priors_from_events(
     model["Attack_Priors"],
     SEASON_EVENTS,
     current_players,
-    prior_exposure=6.0,
+    prior_exposure=attack_prior_exposure,
     reference_team_xg=1.5,
     min_evidence_scale=0.35,
     max_evidence_scale=2.0,
+    recency_decay=0.90,
 )
 
 team_event_parts = []
@@ -212,10 +222,48 @@ team_hist = update_team_strengths_from_events(
     team_hist_base,
     team_events,
     prior_matches=10.0,
+    recency_decay=0.95,
 )
 
 print("Completed GWs folded into priors:", LAST_FINISHED_GW)
 print("Historical + current rows:", len(hist_minutes))
+
+role_diag = attack_priors_updated.merge(
+    current_players[["Player ID", "Player", "Team", "FPL Pos"]],
+    on="Player ID",
+    how="left",
+    validate="one_to_one",
+)
+
+if "Current_Season_Evidence_Weight" in role_diag.columns:
+    role_diag["Role Shift Magnitude"] = (
+        role_diag["xG Share Posterior Shift"].abs().fillna(0.0)
+        + role_diag["xA Share Posterior Shift"].abs().fillna(0.0)
+    )
+    role_diag = role_diag[
+        role_diag["Current_Season_Evidence_Weight"].fillna(0.0) > 0
+    ].sort_values("Role Shift Magnitude", ascending=False)
+
+    if not role_diag.empty:
+        print("\nLargest current-season attacking-role updates")
+        display(
+            role_diag[
+                [
+                    "Player",
+                    "Team",
+                    "FPL Pos",
+                    "Prior Exposure Used",
+                    "Current_Season_Evidence_Weight",
+                    "Current_Season_Minutes",
+                    "xG Share Prior Before",
+                    "Current xG Share Prior",
+                    "xG Share Posterior Shift",
+                    "xA Share Prior Before",
+                    "Current xA Share Prior",
+                    "xA Share Posterior Shift",
+                ]
+            ].head(15)
+        )
 
 
 # %%
@@ -359,6 +407,7 @@ external_priors = update_external_attack_priors_from_events(
     reference_team_xg=1.5,
     min_evidence_scale=0.35,
     max_evidence_scale=2.0,
+    recency_decay=0.90,
 )
 
 print("External-prior matches:", len(external_priors))
@@ -394,11 +443,32 @@ if not external_priors.empty:
 from src.fixture_projection import project_team_fixtures
 from src.attack_projection import build_attack_horizon
 from src.xpts import build_xpts
+from src.market_inputs import load_market_overrides, combine_market_odds
+
+market_override_path = DATA / "market_overrides.csv"
+market_overrides = load_market_overrides(market_override_path)
+market_odds = combine_market_odds(
+    model["Market_Odds"],
+    market_overrides,
+)
+
+if not market_overrides.empty:
+    print(
+        "Current market overrides loaded:",
+        len(market_overrides),
+        "fixtures from",
+        market_override_path.name,
+    )
+else:
+    print(
+        "No current market override file; future fixtures will use the "
+        "strength model unless the workbook already contains market xG."
+    )
 
 fixture_horizon, fixture_fit = project_team_fixtures(
     model["Fixtures"],
     team_hist,
-    model["Market_Odds"],
+    market_odds,
     start_gw=START_GW,
     max_gw=MAX_GW,
     ridge_lambda=2.0,
@@ -681,12 +751,48 @@ display(
 
 print("\nFixture-model diagnostics")
 print(
-    "Market calibration RMSE:",
+    "Market training-fit RMSE:",
     round(float(fixture_fit["rmse"]), 3),
     "| MAE:",
     round(float(fixture_fit["mae"]), 3),
 )
 print(
+    "Leave-one-fixture-out market RMSE:",
+    (
+        round(float(fixture_fit["cv_rmse"]), 3)
+        if pd.notna(fixture_fit["cv_rmse"])
+        else "n/a"
+    ),
+    "| MAE:",
+    (
+        round(float(fixture_fit["cv_mae"]), 3)
+        if pd.notna(fixture_fit["cv_mae"])
+        else "n/a"
+    ),
+)
+print(
+    "Market calibration sample:",
+    fixture_fit["market_fixtures"],
+    "fixtures /",
+    fixture_fit["market_rows"],
+    "team rows",
+)
+print(
     "Projected fixture xG sources:",
     fixture_horizon["xG Source"].value_counts().to_dict(),
 )
+
+market_projected = fixture_horizon[
+    fixture_horizon["Market Team xG"].notna()
+].copy()
+
+if not market_projected.empty:
+    print(
+        "Mean |market - strength| xG:",
+        round(
+            float(
+                market_projected["Market vs Strength xG"].abs().mean()
+            ),
+            3,
+        ),
+    )
