@@ -1,1 +1,11 @@
 .venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.ipynb_checkpoints/
+~$*.xlsx
+
+# Regenerated local data. Existing tracked snapshots stay in history, but
+# fresh runs should not keep adding cache/raw scrape noise to commits.
+data/cache/
+data/raw/
