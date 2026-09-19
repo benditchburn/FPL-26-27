@@ -181,12 +181,30 @@ def evaluate_saved_predictions(
     for col in metric_cols:
         values = pd.to_numeric(out[col], errors="coerce")
         mask = values.notna() & np.isfinite(values)
-        if mask.any():
+
+        if not mask.any():
+            weighted[col] = np.nan
+            continue
+
+        if col == "xPts RMSE":
+            # Per-GW RMSE squared is MSE. Weight MSE by player count, then
+            # take the square root to recover the exact pooled RMSE.
+            weighted[col] = float(
+                np.sqrt(
+                    np.average(
+                        values[mask] ** 2,
+                        weights=weights[mask],
+                    )
+                )
+            )
+        elif col == "xPts Spearman":
+            # Rank correlation cannot be pooled from per-GW correlations
+            # without the underlying paired observations.
+            weighted[col] = np.nan
+        else:
             weighted[col] = float(
                 np.average(values[mask], weights=weights[mask])
             )
-        else:
-            weighted[col] = np.nan
 
     return pd.concat(
         [out, pd.DataFrame([weighted])],
