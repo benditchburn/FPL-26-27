@@ -5,6 +5,7 @@ from src.fpl_api import get_gameweek_state
 from src.lineup_consensus import build_consensus
 from src.start_probs import build_start_probs
 from src.decision_report import build_decision_note
+from src.evaluation import evaluate_projection_snapshot
 
 
 def _players(n=14):
@@ -99,3 +100,31 @@ def test_decision_note_exposes_small_margin():
     assert "near tie" in note
     assert "0.10" in note
     assert "+1.50" in note
+
+
+def test_projection_evaluation_metrics():
+    snapshot = pd.DataFrame(
+        {
+            "Player ID": [1, 2],
+            "xPts Model": [5.0, 2.0],
+            "Effective Mins": [90.0, 45.0],
+            "Start Prob": [0.9, 0.4],
+            "P60": [0.8, 0.2],
+        }
+    )
+    actual = pd.DataFrame(
+        {
+            "Player ID": [1, 2],
+            "total_points": [6.0, 1.0],
+            "minutes": [90.0, 30.0],
+            "starts": [1.0, 0.0],
+        }
+    )
+
+    metrics = evaluate_projection_snapshot(snapshot, actual)
+
+    assert metrics["Players"] == 2
+    assert metrics["xPts MAE"] == 1.0
+    assert metrics["Minutes MAE"] == 7.5
+    assert 0.0 <= metrics["Start Brier"] <= 1.0
+    assert 0.0 <= metrics["P60 Brier"] <= 1.0
