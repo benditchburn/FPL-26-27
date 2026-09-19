@@ -57,27 +57,27 @@ def _team_start_probs(group):
 
     g = group.copy()
 
-    total_weight = sum(
-        SOURCE_WEIGHTS.values()
-    )
+    active_sources = [
+        source
+        for source in SOURCE_WEIGHTS
+        if source in g.columns and g[source].notna().any()
+    ]
 
-    weighted_votes = np.zeros(
-        len(g),
-        dtype=float,
-    )
+    if active_sources:
+        total_weight = sum(SOURCE_WEIGHTS[s] for s in active_sources)
+        weighted_votes = np.zeros(len(g), dtype=float)
 
-    for source, weight in SOURCE_WEIGHTS.items():
+        for source in active_sources:
+            weight = SOURCE_WEIGHTS[source]
+            weighted_votes += (
+                weight * g[source].fillna(0).to_numpy(dtype=float)
+            )
 
-        weighted_votes += (
-            weight
-            * g[source]
-            .fillna(0)
-            .to_numpy(dtype=float)
-        )
-
-    evidence = (
-        weighted_votes / total_weight
-    )
+        evidence = weighted_votes / total_weight
+    else:
+        # No current predicted-lineup feed: use a neutral lineup signal and
+        # let availability + the 11-starter reconciliation determine the team.
+        evidence = np.full(len(g), 0.5, dtype=float)
 
     g["Lineup Evidence"] = evidence
 

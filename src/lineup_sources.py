@@ -68,27 +68,45 @@ def fetch_lineup_sources(
     root: Path,
     gameweek: int | None = None,
     nma_url: str | None = None,
+    strict: bool = True,
 ) -> dict[str, Path]:
+    """Fetch predicted-lineup pages and save raw snapshots.
+
+    With ``strict=False`` a temporarily unavailable source is skipped instead
+    of aborting the whole weekly run. This is useful early in the week when
+    one publisher may not yet have posted its next-GW article.
+    """
     stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     out_dir = root / "data" / "raw" / "lineups" / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
 
     urls = dict(SOURCES)
-    urls["nma"] = nma_url or discover_nma_lineup_url(gameweek)
+
+    try:
+        urls["nma"] = nma_url or discover_nma_lineup_url(gameweek)
+    except Exception as exc:
+        if strict:
+            raise
+        print(f"SKIP nma: {exc}")
 
     saved = {}
 
     for name, url in urls.items():
-        response = requests.get(
-            url,
-            headers=HEADERS,
-            timeout=30,
-        )
-        response.raise_for_status()
+        try:
+            response = requests.get(
+                url,
+                headers=HEADERS,
+                timeout=30,
+            )
+            response.raise_for_status()
+        except Exception as exc:
+            if strict:
+                raise
+            print(f"SKIP {name}: {exc}")
+            continue
 
         path = out_dir / f"{name}.html"
         path.write_text(response.text, encoding="utf-8")
-
         saved[name] = path
 
     return saved

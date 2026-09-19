@@ -2,6 +2,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
+import numpy as np
 import pandas as pd
 
 
@@ -91,18 +92,23 @@ def build_consensus(
     rw_match,
     nma_match,
 ):
+    """Combine predicted-lineup sources without treating missing feeds as votes.
 
+    A source that failed entirely is left as NaN and excluded from the
+    denominator. If a source only contains some clubs, uncovered clubs are
+    also NaN rather than being interpreted as eleven negative votes.
+    """
     base = current_players[
-    [
-        "Player ID",
-        "Code",
-        "Player",
-        "Team",
-        "FPL Pos",
-        "Status",
-        "Chance Play Next",
-        "News",
-    ]
+        [
+            "Player ID",
+            "Code",
+            "Player",
+            "Team",
+            "FPL Pos",
+            "Status",
+            "Chance Play Next",
+            "News",
+        ]
     ].copy()
 
     sources = {
@@ -112,33 +118,45 @@ def build_consensus(
     }
 
     for source_name, source_df in sources.items():
+        base[source_name] = np.nan
+
+        if (
+            source_df is None
+            or source_df.empty
+            or "Player ID" not in source_df.columns
+        ):
+            continue
 
         starters = set(
             source_df.loc[
-                source_df["Predicted Starter"]
+                source_df["Predicted Starter"].fillna(False)
                 & source_df["Player ID"].notna(),
                 "Player ID",
             ].astype(int)
         )
 
-        base[source_name] = (
-            base["Player ID"]
-            .isin(starters)
-            .astype(float)
+        if "Matched Team" in source_df.columns:
+            covered_teams = set(source_df["Matched Team"].dropna().astype(str))
+        elif "Team" in source_df.columns:
+            covered_teams = set(
+                source_df["Team"].map(
+                    lambda x: TEAM_ALIASES.get(x, x)
+                ).dropna().astype(str)
+            )
+        else:
+            covered_teams = set(base["Team"].astype(str))
+
+        covered = base["Team"].astype(str).isin(covered_teams)
+        base.loc[covered, source_name] = (
+            base.loc[covered, "Player ID"].isin(starters).astype(float)
         )
 
-    base["Lineup Votes"] = (
-        base[
-            [
-                "FFScout",
-                "RotoWire",
-                "NMA",
-            ]
-        ].sum(axis=1)
-    )
-
+    source_cols = ["FFScout", "RotoWire", "NMA"]
+    base["Lineup Votes"] = base[source_cols].sum(axis=1, skipna=True)
+    base["Lineup Sources Available"] = base[source_cols].notna().sum(axis=1)
     base["Lineup Consensus"] = (
-        base["Lineup Votes"] / 3
+        base["Lineup Votes"]
+        / base["Lineup Sources Available"].replace(0, np.nan)
     )
 
     return base
