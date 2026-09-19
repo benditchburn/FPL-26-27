@@ -41,6 +41,41 @@ SELL_PRICES = None
 Supplying actual FPL selling prices is important when an owned player's sale
 value differs from the live market price.
 
+
+### Optional current bookmaker inputs
+
+The workbook market sheet is still the calibration anchor, but the weekly run
+will also look for:
+
+```
+data/market_overrides.csv
+```
+
+If that file exists, its current market information overrides the workbook on
+matching fixtures. There are two supported formats.
+
+Direct team xG:
+
+```csv
+GW,Home,Away,Market Home xG,Market Away xG,Home CS Prob,Away CS Prob
+6,Arsenal,Everton,2.05,0.72,0.487,0.129
+```
+
+Or ordinary decimal match odds, optionally with the 2.5-goal market:
+
+```csv
+GW,Home,Away,Home Odds,Draw Odds,Away Odds,Over 2.5 Odds,Under 2.5 Odds
+6,Arsenal,Everton,1.42,4.80,7.50,1.78,2.08
+```
+
+For the odds format, the model removes the bookmaker margin and fits
+independent-Poisson home/away scoring rates to the 1X2 and O/U probabilities.
+Those rates become market-implied team xG and clean-sheet probabilities.
+
+This means near-term fixtures can use fresh market expectations when you have
+them, while later fixtures continue to fall back to the strength model. The
+weekly diagnostics report exactly which source was used.
+
 ## Setup
 
 Create/activate a virtual environment and install dependencies:
@@ -62,11 +97,12 @@ Jupyter extension.
 - `src/start_probs.py`, `minutes.py`, `horizon_minutes.py` — start and
   minutes forecasts
 - `src/fixture_projection.py` — team xG / clean-sheet fixture engine
+- `src/market_inputs.py` — current-market overrides and odds-to-xG inversion
 - `src/attack_projection.py` — player xG/xA allocation
 - `src/defensive_points.py` — defensive-contribution and goalkeeper-save xPts
 - `src/bonus_points.py` — historical/shrunk bonus expectation
 - `src/xpts.py` — base FPL scoring
-- `src/season_update.py` — cumulative in-season prior updates
+- `src/season_update.py` — adaptive, recency-weighted in-season prior updates
 - `src/transfer_optimizer.py` — multi-GW squad/transfer MILP
 - `src/evaluation.py` — pre-deadline projection snapshots and post-GW scoring
 
@@ -77,9 +113,10 @@ The older numbered notebooks are retained as historical development runs.
 This is a decision model, not a claim of exact future points. Current limitations
 worth addressing next are:
 
-1. **Uncertainty is mostly collapsed to point estimates.** A Monte Carlo layer
-   for starts, minutes and team goals would let the optimiser distinguish safe
-   picks from high-variance picks with the same mean xPts.
+1. **Uncertainty is mostly collapsed to point estimates.** The mean projection
+   is now more responsive to current role and can use fresh bookmaker inputs,
+   but a Monte Carlo layer for starts, minutes and team goals is still needed
+   to distinguish safe picks from high-variance picks with the same mean xPts.
 2. **Transfer prices are static over the horizon.** The optimiser does not
    forecast price changes and only knows correct selling values if they are
    supplied.
