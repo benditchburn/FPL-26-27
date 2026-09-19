@@ -9,3 +9,6 @@ __pycache__/
 # fresh runs should not keep adding cache/raw scrape noise to commits.
 data/cache/
 data/raw/
+
+# Ephemeral current bookmaker inputs
+data/market_overrides.csv
