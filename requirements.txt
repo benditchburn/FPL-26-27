@@ -1,0 +1,10 @@
+numpy
+pandas
+scipy
+requests
+beautifulsoup4
+lxml
+openpyxl
+jupyter
+ipython
+LanusStats
